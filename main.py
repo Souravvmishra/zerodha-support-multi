@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, render_template, jsonify
+import streamlit as st
 from crewai import Agent, Task, Crew, Process
 from crewai_tools import SerperDevTool
 from dotenv import load_dotenv
@@ -7,16 +7,14 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-app = Flask(__name__)
-
 # Set up the environment keys
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")  # Replace with your OpenAI API key
-os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY") # Replace with your Serper API key
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY")
 
 # Initialize the SerperDevTool
 search_tool = SerperDevTool()
 
-# Define the Zerodha Support Agent with the search tool
+# Zerodha Support Bot setup
 zerodha_support_agent = Agent(
     role='Zerodha Support Agent',
     goal='Assist users with their queries regarding Zerodha services.',
@@ -28,7 +26,6 @@ zerodha_support_agent = Agent(
     tools=[search_tool]
 )
 
-# Define the Task for the Zerodha Support Agent
 support_task = Task(
     description=(
         "Respond to user queries regarding Zerodha services in a helpful and engaging manner. "
@@ -39,26 +36,63 @@ support_task = Task(
     agent=zerodha_support_agent
 )
 
-# Assemble the Crew
 zerodha_support_crew = Crew(
     agents=[zerodha_support_agent],
     tasks=[support_task],
     process=Process.sequential
 )
 
+# Out-of-Context Agent setup
+out_of_context_agent = Agent(
+    role='Context Checker',
+    goal='Determine if a question is relevant to Zerodha services.',
+    verbose=True,
+    memory=True,
+    backstory=(
+        "You are responsible for determining if a question is relevant to Zerodha services. "
+        "If the question is not related, you respond politely indicating the same."
+    )
+)
+
+context_check_task = Task(
+    description=(
+        "Determine if the user query is related to Zerodha services. "
+        "If not, respond with a polite message indicating that the question is out of context."
+        "User query: {user_query}"
+    ),
+    expected_output='A polite response indicating if the query is out of context.',
+    agent=out_of_context_agent
+)
+
+context_check_crew = Crew(
+    agents=[out_of_context_agent],
+    tasks=[context_check_task],
+    process=Process.sequential
+)
+
+def kickoff_context_check(user_input):
+    result = context_check_crew.kickoff(inputs={'user_query': user_input})
+    return result
+
 def kickoff_zerodha_support(user_input):
     result = zerodha_support_crew.kickoff(inputs={'user_query': user_input})
     return result
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+# Streamlit UI
+st.title("Zerodha Support Bot")
 
-@app.route('/get_response', methods=['POST'])
-def get_response():
-    user_input = request.json['user_input']  # Parse JSON data correctly
-    response = kickoff_zerodha_support(user_input)
-    return jsonify(response)
+user_input = st.text_input("Enter your question about Zerodha services:")
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if st.button("Get Answer"):
+    if user_input:
+        with st.spinner("Processing your query..."):
+            context_check_response = kickoff_context_check(user_input)
+            if 'out of context' in context_check_response.lower():
+                st.write(context_check_response)
+            else:
+                response = kickoff_zerodha_support(user_input)
+                st.write(response)
+    else:
+        st.write("Please enter a question.")
+
+
