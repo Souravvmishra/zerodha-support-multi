@@ -26,22 +26,6 @@ zerodha_support_agent = Agent(
     tools=[search_tool]
 )
 
-support_task = Task(
-    description=(
-        "Respond to user queries regarding Zerodha services in a helpful and engaging manner. "
-        "Use the provided tools to fetch up-to-date information from the internet if needed. "
-        "User query: {user_query}"
-    ),
-    expected_output='A detailed and informative response to the user query about Zerodha services.',
-    agent=zerodha_support_agent
-)
-
-zerodha_support_crew = Crew(
-    agents=[zerodha_support_agent],
-    tasks=[support_task],
-    process=Process.sequential
-)
-
 # Out-of-Context Agent setup
 out_of_context_agent = Agent(
     role='Context Checker',
@@ -54,45 +38,68 @@ out_of_context_agent = Agent(
     )
 )
 
-context_check_task = Task(
-    description=(
-        "Determine if the user query is related to Zerodha services. "
-        "If not, respond with a polite message indicating that the question is out of context."
-        "User query: {user_query}"
-    ),
-    expected_output='A polite response indicating if the query is out of context.',
-    agent=out_of_context_agent
+# Say This Not That Bot setup
+rephrasing_expert = Agent(
+    role='Rephrasing Expert',
+    goal='Rephrase statements to be more effective and appropriate.',
+    verbose=True,
+    memory=True,
+    backstory=(
+        "You are an expert in effective communication and language. Your job is to help users "
+        "rephrase their statements to be more clear, polite, or impactful depending on the context."
+    )
 )
 
-context_check_crew = Crew(
-    agents=[out_of_context_agent],
-    tasks=[context_check_task],
+tone_analyzer = Agent(
+    role='Tone Analyzer',
+    goal='Analyze the tone of statements and suggest improvements.',
+    verbose=True,
+    memory=True,
+    backstory=(
+        "You are skilled at analyzing the tone and emotional impact of language. You help identify "
+        "areas where the tone could be improved to better achieve the speaker's goals."
+    )
+)
+
+# Centralized Task for determining user query context and responding appropriately
+centralized_task = Task(
+    description=(
+        "Determine the context of the user query and respond appropriately. "
+        "If the query is related to Zerodha services, provide a detailed and informative response. "
+        "If the query is out of context, respond politely indicating that the question is out of context. "
+        "If the query requires rephrasing or tone analysis, handle that as well."
+        "If the query does not fall in any one of the two things, tell him that it is out of context. and we can only provide two types of services."
+        "Don't answer general queries"
+        "User query: {user_query}"
+    ),
+    expected_output='An appropriate response based on the context of the user query.',
+    agent=Agent(
+        role='Centralized Bot',
+        goal='Determine the context of user queries and respond appropriately.',
+        verbose=True,
+        memory=True,
+        backstory=(
+            "You are an intelligent bot capable of determining the context of user queries and delegating tasks "
+            "to the appropriate agents to provide the best response."
+            "If the query does not fall in any one of the two things, tell him that it is out of context. and we can only provide two types of services."
+        ),
+        tools=[search_tool],
+        allow_delegation=True
+    )
+)
+
+# Centralized Crew setup
+centralized_crew = Crew(
+    agents=[zerodha_support_agent, out_of_context_agent, rephrasing_expert, tone_analyzer],
+    tasks=[centralized_task],
     process=Process.sequential
 )
 
-def kickoff_context_check(user_input):
-    result = context_check_crew.kickoff(inputs={'user_query': user_input})
-    return result
-
-def kickoff_zerodha_support(user_input):
-    result = zerodha_support_crew.kickoff(inputs={'user_query': user_input})
-    return result
-
 # Streamlit UI
-st.title("Zerodha Support Bot")
+st.title("Multi-Bot Assistant")
+user_input = st.text_area("Enter your question or statement:")
 
-user_input = st.text_input("Enter your question about Zerodha services:")
-
-if st.button("Get Answer"):
-    if user_input:
-        with st.spinner("Processing your query..."):
-            context_check_response = kickoff_context_check(user_input)
-            if 'out of context' in context_check_response.lower():
-                st.write(context_check_response)
-            else:
-                response = kickoff_zerodha_support(user_input)
-                st.write(response)
-    else:
-        st.write("Please enter a question.")
-
-
+if user_input:
+    with st.spinner("Processing your input..."):
+        result = centralized_crew.kickoff(inputs={'user_query': user_input})
+        st.write(result)
