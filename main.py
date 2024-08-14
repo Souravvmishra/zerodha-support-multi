@@ -11,17 +11,28 @@ load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY")
 
-# Initialize the SerperDevTool
-search_tool = SerperDevTool()
+# Initialize the SerperDevTool with Axi.com-related search settings
+class AxiSerperDevTool(SerperDevTool):
+    def search(self, query):
+        # Add a prefix to filter results to Axi.com-related content
+        axi_query = f"site:axi.com {query}"
+        results = super().search(axi_query)
+        # Filter results to include only Axi.com content
+        relevant_results = [result for result in results if 'axi.com' in result.get('link', '')]
+        return relevant_results
 
-# Zerodha Support Bot setup
-zerodha_support_agent = Agent(
-    role='Zerodha Support Agent',
-    goal='Assist users with their queries regarding Zerodha services.',
+# Initialize the customized search tool
+search_tool = AxiSerperDevTool()
+
+# Axi.com Information Agent setup
+axi_info_agent = Agent(
+    role='Axi.com Information Specialist',
+    goal='Provide accurate and detailed information about Axi.com products, services, and trading conditions.',
     verbose=True,
     memory=True,
     backstory=(
-        "You are a knowledgeable support agent for Zerodha, equipped to assist users with their queries about Zerodha's trading platform, account management, and other services."
+        "You are a knowledgeable specialist in Axi.com's offerings. You provide detailed information "
+        "about their trading platforms, financial instruments, account types, and market analysis tools."
     ),
     tools=[search_tool]
 )
@@ -29,59 +40,34 @@ zerodha_support_agent = Agent(
 # Out-of-Context Agent setup
 out_of_context_agent = Agent(
     role='Context Checker',
-    goal='Determine if a question is relevant to Zerodha services.',
+    goal='Determine if a question is relevant to Axi.com and politely decline if not.',
     verbose=True,
     memory=True,
     backstory=(
-        "You are responsible for determining if a question is relevant to Zerodha services. "
-        "If the question is not related, you respond politely indicating the same."
-    )
-)
-
-# Say This Not That Bot setup
-rephrasing_expert = Agent(
-    role='Rephrasing Expert',
-    goal='Rephrase statements to be more effective and appropriate.',
-    verbose=True,
-    memory=True,
-    backstory=(
-        "You are an expert in effective communication and language. Your job is to help users "
-        "rephrase their statements to be more clear, polite, or impactful depending on the context."
-    )
-)
-
-tone_analyzer = Agent(
-    role='Tone Analyzer',
-    goal='Analyze the tone of statements and suggest improvements.',
-    verbose=True,
-    memory=True,
-    backstory=(
-        "You are skilled at analyzing the tone and emotional impact of language. You help identify "
-        "areas where the tone could be improved to better achieve the speaker's goals."
+        "You are responsible for determining if a question is relevant to Axi.com. "
+        "If the question is not related, you respond politely indicating that the question is out of context and "
+        "that only Axi.com-related information is provided."
     )
 )
 
 # Centralized Task for determining user query context and responding appropriately
 centralized_task = Task(
     description=(
-        "Determine the context of the user query and respond appropriately. "
-        "If the query is related to Zerodha services, provide a detailed and informative response. "
-        "If the query is out of context, respond politely indicating that the question is out of context. "
-        "If the query requires rephrasing or tone analysis, handle that as well."
-        "If the query does not fall in any one of the two things, tell him that it is out of context. and we can only provide two types of services."
-        "Don't answer general queries"
+        "Determine if the user query is related to Axi.com and respond appropriately. "
+        "If the query is about Axi.com, provide a detailed and informative response. "
+        "If the query is out of context, respond politely indicating that only Axi.com-related information is provided. "
         "User query: {user_query}"
     ),
-    expected_output='An appropriate response based on the context of the user query.',
+    expected_output='A detailed response based on the context of the user query, focusing on Axi.com information.',
     agent=Agent(
-        role='Centralized Bot',
-        goal='Determine the context of user queries and respond appropriately.',
+        role='Axi.com Information Bot',
+        goal='Provide comprehensive information about Axi.com and its offerings.',
         verbose=True,
         memory=True,
         backstory=(
-            "You are an intelligent bot capable of determining the context of user queries and delegating tasks "
-            "to the appropriate agents to provide the best response."
-            "If the query does not fall in any one of the two things, tell him that it is out of context. and we can only provide two types of services."
+            "You are an intelligent bot specializing in Axi.com information. You provide detailed responses "
+            "about Axi.com's trading platforms, financial instruments, account types, and market analysis tools. "
+            "You only respond to queries related to Axi.com."
         ),
         tools=[search_tool],
         allow_delegation=True
@@ -90,14 +76,14 @@ centralized_task = Task(
 
 # Centralized Crew setup
 centralized_crew = Crew(
-    agents=[zerodha_support_agent, out_of_context_agent, rephrasing_expert, tone_analyzer],
+    agents=[axi_info_agent, out_of_context_agent],
     tasks=[centralized_task],
     process=Process.sequential
 )
 
 # Streamlit UI
-st.title("Multi-Bot Assistant")
-user_input = st.text_area("Enter your question or statement:")
+st.title("Axi.com Information Assistant")
+user_input = st.text_area("Enter your question about Axi.com:")
 
 if user_input:
     with st.spinner("Processing your input..."):
